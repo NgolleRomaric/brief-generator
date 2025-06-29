@@ -209,12 +209,23 @@ async function generateBriefWithFallback(prompt, schema) {
     // Retry pour chaque modèle
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        const result = await generateObject({
+        // Timeout protection pour Vercel
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(
+            () => reject(new Error("Timeout: Génération trop longue")),
+            8000
+          ); // 8s max
+        });
+
+        const generatePromise = generateObject({
           model,
           prompt,
           schema,
           temperature: 0.8,
+          maxTokens: 2000, // Limite pour éviter les timeouts
         });
+
+        const result = await Promise.race([generatePromise, timeoutPromise]);
 
         console.log(`✅ Succès avec ${name} (tentative ${attempt + 1})`);
         return result;
@@ -255,6 +266,13 @@ async function generateBriefWithFallback(prompt, schema) {
 
 export async function POST(request) {
   console.log("🚀 Début de la requête POST /api/generate-brief");
+
+  // Debug production
+  console.log("🔧 Environment:", {
+    NODE_ENV: process.env.NODE_ENV,
+    hasGoogleKey: !!process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+    keyLength: process.env.GOOGLE_GENERATIVE_AI_API_KEY?.length || 0,
+  });
 
   try {
     // 1. Parsing des données
